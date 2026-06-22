@@ -1,0 +1,12 @@
+torch
+xarray
+matplotlib
+tqdm
+pandas
+scipy
+numpy
+statsmodels
+denseweight
+
+# --------- parallel --------- #
+# mpi4py  # Uncomment if using MPI for parallelism
