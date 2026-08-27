@@ -79,14 +79,22 @@ pip install -r requirements.txt
 │   ├── RandomWeight/
 │   └── Standard/
 ├── data/
-│   └── generation/
-│       ├── generate_ks_dataset.py   # build the KS forecasting dataset (samples, normalization)
-│       └── KS.py                    # KS equation integrator / solver
+│   └── ks/
+│       └── generation/
+│           ├── generate_ks_dataset.py   # build the KS forecasting dataset (integrate, split, normalize, downsample)
+│           └── KS.py                    # KS equation spectral integrator / solver
 ├── notebooks/                   # analysis & figure-generation notebooks
+├── pypardi/                     # local/global dynamical-indices library (EVT/GPD estimation of the local dimension d)
+│   ├── local_indices.py         # local_indices.compute(...) -> local dimension d, extremal index theta
+│   ├── global_indices.py
+│   ├── attractors.py
+│   ├── di_evaluate.py / di_evaluate_par.py
+│   └── utils.py
 ├── scripts/
-│   ├── experiments.sh           # launch training/eval across all weighting schemes
-│   └── generate_ks.sh           # generate the KS dataset end-to-end
-├── run_experiments.py           # main entry point (training + rollout evaluation)
+│   ├── experiments.sh           # per-method run_experiments.py launch commands (fill in as needed)
+│   └── generate_ks.sh           # wrapper around generate_ks_dataset.py ("paper" preset or custom args)
+├── calculate_di_sample_pair.py  # compute the local dimension d for each (input, output) sample pair via pypardi
+├── run_experiments.py           # main training entry point (Standard / DenseWeight / DAW / RandomWeight)
 ├── requirements.txt
 └── README.md
 ```
@@ -111,22 +119,35 @@ $$\frac{\partial u}{\partial t} + u\frac{\partial u}{\partial x} + \frac{\partia
 | Total samples | 2,500,000 |
 | Normalization | Z-score (train stats applied to val/test) |
 
-Generate the dataset:
+Generate the dataset (writes `mean.npy`, `std.npy`, and `train/`, `val/`, `test/` splits under `<save_dir>/<name>/`):
 
 ```bash
-# TODO: fill in your actual script name and arguments
-python data/generation/ks_gen.py 
+# Reproduce the exact paper configuration (L=3.5, N=64, dt=0.01, 2.5M steps, ...)
+./scripts/generate_ks.sh paper
+
+# Or pass your own arguments through; unset flags fall back to the paper defaults
+./scripts/generate_ks.sh custom --L 8.0 --N 128 --name L8_N128
+
+# Equivalently, invoke the generator directly. It uses a local `from KS import KS`
+# import, so run it from within its own directory:
+cd data/ks/generation
+python generate_ks_dataset.py \
+    --L 3.5 --N 64 --dt 0.01 --diffusion 1.0 \
+    --length 2500000 --start_from 10000 \
+    --train_ratio 0.7 --val_ratio 0.15 \
+    --downsample 25 \
+    --save_dir ../../ks --name AllPass \
+    --dtype float32 --seed 0 --save_raw
 ```
 
-Compute the local dimension $d$ for each state (EVT/GPD, $d = 1/\sigma$):
+Compute the local dimension $d$ for each `(input, output)` sample pair (EVT/GPD via `pypardi`, $d = 1/\sigma$). The input and output windows are embedded jointly before estimating $d$, and results are saved as `d_sample_pair_in<input_len>_out<output_len>_q<quantile>...npy` / `theta_sample_pair_...npy` next to the input data:
 
 ```bash
-# TODO: fill in your actual script name and arguments
-python src/local_dim.py \
-    --input data/ks_L22.npy \
-    --quantile 0.98 \
-    --traj-length-LT 850 \
-    --out data/ks_L22_dim.npy
+python calculate_di_sample_pair.py \
+    --data_path data/ks/AllPass/train/data.npy \
+    --input_len 3 --output_len 1 \
+    --quantile 0.99 \
+    --save_dir data/ks/AllPass/train
 ```
 
 > **Note on trajectory length:** As shown in Appendix A, the standardized $d$ distribution converges and stabilizes around **850 LT**; this is the configuration used throughout the experiments.
@@ -139,25 +160,31 @@ All methods share an identical MLP backbone, optimizer, learning-rate schedule, 
 
 ```bash
 # DAW (ours)
-# TODO: fill in your actual entry point and arguments
-python src/train.py \
-    --config configs/daw.yaml \
-    --weighting daw \
-    --alpha 1.0
+python run_experiments.py \
+    --method DAW --alpha 1.0 \
+    --data_dir data/ks/AllPass \
+    --d_path data/ks/AllPass/train/d_sample_pair_in3_out1_q0.99_None.npy \
+    --base_save_dir ./ckpts/DAW \
+    --device cuda:0
 ```
 
-Reproduce the baselines:
+Reproduce the baselines (`--data_dir` must contain `train/`, `val/`, `test/` splits as produced by `generate_ks_dataset.py`; `--d_path` defaults to `<data_dir>/train/d_sample_pair_in3_out1_q0.99.npy` if omitted, so pass it explicitly if `calculate_di_sample_pair.py` wrote a different filename):
 
 ```bash
 # Standard (uniform weighting, w_i = 1)
-python src/train.py --config configs/base.yaml --weighting standard
+python run_experiments.py --method Standard --data_dir data/ks/AllPass --base_save_dir ./ckpts/Standard
 
-# DenseWeight (target-space density weighting)
-python src/train.py --config configs/base.yaml --weighting denseweight --alpha 1.0
+# DenseWeight (target-space density weighting on the output L2-norm)
+python run_experiments.py --method DenseWeight --alpha 0.5 --data_dir data/ks/AllPass --base_save_dir ./ckpts/DenseWeight
 
-# RandomWeight (shuffled DAW weights ablation)
-python src/train.py --config configs/base.yaml --weighting randomweight
+# RandomWeight (shuffled DAW weights ablation; also requires --d_path)
+python run_experiments.py --method RandomWeight --alpha 1.0 \
+    --data_dir data/ks/AllPass \
+    --d_path data/ks/AllPass/train/d_sample_pair_in3_out1_q0.99_None.npy \
+    --base_save_dir ./ckpts/RandomWeight
 ```
+
+Each run writes `hparams.json`, `best_model.pth`, `last_model.pth`, and `loss_history.json` to a timestamped subfolder of `--base_save_dir`. `scripts/experiments.sh` is a scaffold for chaining all four launches — fill in the commands above under each `# Standard` / `# DenseWeight` / `# DAW` / `# RandomWeight` marker to batch a full sweep. See `python run_experiments.py --help` for the full set of model/optimization flags (hidden width, depth, batch size, learning rate, warmup epochs, etc.).
 
 | Method | Weighting | Tests |
 |---|---|---|
@@ -172,14 +199,7 @@ python src/train.py --config configs/base.yaml --weighting randomweight
 
 The trained surrogate is queried in closed loop (autoregressive rollout). Forecast horizons are reported in **Lyapunov times (LT)**.
 
-```bash
-# TODO: fill in your actual entry point and arguments
-python src/eval.py \
-    --ckpt <path/to/checkpoint> \
-    --data data/ks_L22.npy \
-    --dim data/ks_L22_dim.npy \
-    --horizon-steps 80
-```
+> This repository currently ships the data-generation, local-dimension, and training entry points above (`generate_ks_dataset.py`, `calculate_di_sample_pair.py`, `run_experiments.py`); the autoregressive rollout / metrics analysis is done via notebooks under [`notebooks/`](notebooks/), loading a checkpoint from `--base_save_dir` (e.g. `ckpts/<method>/<run_name>/best_model.pth`) together with the `test/data.npy` split and `mean.npy` / `std.npy` for de-normalization.
 
 **Metrics**
 

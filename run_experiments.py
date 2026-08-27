@@ -8,9 +8,15 @@ import json
 import datetime
 import argparse
 from torch.utils.data import Dataset, DataLoader
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 # Import the official DenseWeight library
 from denseweight import DenseWeight
+
+
+
 
 # ==========================================
 # Functions & Modules
@@ -146,6 +152,114 @@ class MLP(nn.Module):
         y = self.fc(x)
         return y.view(-1, self.output_len, self.n_features)
 
+class DoubleConv1d(nn.Module):
+    """(Conv1d => BatchNorm1d => ReLU) * 2"""
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.double_conv = nn.Sequential(
+            nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.double_conv(x)
+
+class Down1d(nn.Module):
+    """Downscaling with maxpool then double conv"""
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.maxpool_conv = nn.Sequential(
+            nn.MaxPool1d(2),
+            DoubleConv1d(in_channels, out_channels)
+        )
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
+
+class Up1d(nn.Module):
+    """Upscaling then double conv"""
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        # 1D 反卷积进行上采样
+        self.up = nn.ConvTranspose1d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+        self.conv = DoubleConv1d(in_channels, out_channels)
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        # 处理输入特征长度(n_features)不能被2整除导致的大小不匹配问题
+        diff = x2.size(-1) - x1.size(-1)
+        x1 = F.pad(x1, [diff // 2, diff - diff // 2])
+        
+        # 沿着 channel 维度进行拼接
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
+
+class UNet1d(nn.Module):
+    def __init__(self, input_len, output_len, n_features, hidden_dim=64, n_layers=3):
+        """
+        参数映射:
+        - input_len: 输入的时间步 (对应 U-Net 的 in_channels)
+        - output_len: 预测的时间步 (对应 U-Net 的 out_channels)
+        - n_features: 空间网格数 (卷积沿此维度滑动，为兼容性保留此参数)
+        - hidden_dim: 初始基础通道数 (控制模型宽度)
+        - n_layers: 下采样/上采样的层数 (控制模型深度)
+        """
+        super(UNet1d, self).__init__()
+        self.input_len = input_len
+        self.output_len = output_len
+        self.n_features = n_features
+        self.n_layers = max(1, n_layers)  # 至少需要 1 层 U-Net 结构
+
+        # 初始特征提取
+        self.inc = DoubleConv1d(input_len, hidden_dim)
+
+        # 动态构建下采样路径 (Encoder)
+        self.downs = nn.ModuleList()
+        for i in range(self.n_layers):
+            in_c = hidden_dim * (2 ** i)
+            out_c = hidden_dim * (2 ** (i + 1))
+            self.downs.append(Down1d(in_c, out_c))
+
+        # 动态构建上采样路径 (Decoder)
+        self.ups = nn.ModuleList()
+        for i in reversed(range(self.n_layers)):
+            in_c = hidden_dim * (2 ** (i + 1))
+            out_c = hidden_dim * (2 ** i)
+            self.ups.append(Up1d(in_c, out_c))
+
+        # 最终输出层，映射回所需的输出时间步长度
+        self.outc = nn.Conv1d(hidden_dim, output_len, kernel_size=1)
+
+    def forward(self, x):
+        # 此时 x 的 shape 为 [batch, input_len, n_features]
+        # 在 1D 卷积中，通道维度天然是 input_len，序列长度天然是 n_features，因此无需 permute 转换维度
+        
+        x = self.inc(x)
+        skips = [x]
+
+        # Encoder 前向传播
+        for down in self.downs:
+            x = down(x)
+            skips.append(x)
+
+        # 弹出最底层的特征（Bottleneck），不参与 skip connection 拼接
+        skips.pop()
+
+        # Decoder 前向传播
+        for up in self.ups:
+            skip = skips.pop()
+            x = up(x, skip)
+
+        logits = self.outc(x)
+        
+        # 输出 shape 为 [batch, output_len, n_features]，与原先 DataLoader 目标一致
+        return logits
+
+
 def compute_daw_weights(d, alpha):
     """Compute the Dimension-Aware Weighting (DAW) per-sample weights from the local dimension d.
 
@@ -206,6 +320,7 @@ if __name__ == '__main__':
     # 'Standard'    : uniform weighting (reference baseline)
     parser.add_argument('--method', type=str, default='DenseWeight', choices=['DenseWeight', 'Standard', 'DAW', 'RandomWeight'], help='Select training mode: DenseWeight, Standard, DAW, or RandomWeight')
     parser.add_argument('--alpha', type=float, default=0.5, help='Intensity parameter controlling how aggressively rare/high-d regions are upweighted')
+    parser.add_argument('--model_type', type=str, default='MLP', help='MLP, FNO or UNet')
 
     # --- Data / model dimensions ---
     parser.add_argument('--n_features', type=int, default=64, help='Number of spatial grid points (features) per state')
@@ -378,8 +493,15 @@ if __name__ == '__main__':
     # ==========================
     # 5. model, criterion, optimizer
     # ==========================
-    model = MLP(args.input_len, args.output_len, args.n_features, 
-                args.hidden_dim, args.n_layers).to(device)
+    if args.model_type == 'MLP':
+        model = MLP(args.input_len, args.output_len, args.n_features, 
+                    args.hidden_dim, args.n_layers).to(device)
+    elif args.model_type == 'FNO':
+        model = FNO1d(args.input_len, args.output_len, args.n_features, 
+                args.hidden_dim, args.n_layers, args.n_modes).to(device)
+    elif args.model_type == 'UNet':
+        model = UNet1d(args.input_len, args.output_len, args.n_features,
+                args.hidden_dim, args.n_layers,).to(device)
                 
     criterion = DenseLoss() 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
