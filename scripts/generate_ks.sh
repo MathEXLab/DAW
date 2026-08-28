@@ -19,7 +19,8 @@
 set -euo pipefail
 
 PY=python                                   # or: path to your venv python
-SCRIPT="$(dirname "$0")/generate_ks_dataset.py"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT="$ROOT/data/ks/generation/generate_ks_dataset.py"
 
 PRESET="${1:-paper}"
 
@@ -32,7 +33,7 @@ case "$PRESET" in
       --length 2500000 --start_from 10000 \
       --train_ratio 0.7 --val_ratio 0.15 \
       --downsample 25 \
-      --save_dir ./data/ks --name AllPass \
+      --save_dir "$ROOT/data" --name ks \
       --dtype float32 --seed 0 --save_raw
     ;;
 

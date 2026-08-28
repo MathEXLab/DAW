@@ -1,12 +1,12 @@
 <div align="center">
 
-# DAW: Dimension-Aware Weighting for Stable Long-Term Forecasting
+# DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems
 
 <!-- Decorative badges — edit the URLs/labels as needed -->
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.9-EE4C2C?logo=pytorch&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)
+[![arXiv](https://img.shields.io/badge/arXiv-2608.22277-b31b1b.svg)](https://arxiv.org/abs/2608.22277)
 <!-- Optional extras:
 ![Conda](https://img.shields.io/badge/conda-342B029.svg?logo=anaconda&logoColor=white)
 ![Matplotlib](https://img.shields.io/badge/Matplotlib-11557C?logo=matplotlib&logoColor=white)
@@ -30,7 +30,7 @@ Key properties:
 - **Knowledge-informed:** weights are derived from phase-space geometry ($d$), not from target-space statistics.
 - **Plug-and-play:** acts purely on the training objective; architecture-agnostic with **zero inference overhead**.
 
-> 📄 **Paper:** *DAW: Dimension-Aware Weighting for Stable Long-Term Forecasting* — \<TODO: link / arXiv ID\>
+> 📄 **Paper:** *DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems* — [arXiv:2608.22277](https://arxiv.org/abs/2608.22277)
 
 ---
 
@@ -123,6 +123,7 @@ Generate the dataset (writes `mean.npy`, `std.npy`, and `train/`, `val/`, `test/
 
 ```bash
 # Reproduce the exact paper configuration (L=3.5, N=64, dt=0.01, 2.5M steps, ...)
+chmod +x scripts/generate_ks.sh #(run only once)
 ./scripts/generate_ks.sh paper
 
 # Or pass your own arguments through; unset flags fall back to the paper defaults
@@ -229,12 +230,12 @@ DAW is the last method to cross the 0.5 correlation threshold (≈0.85 LT) and a
 If you find this work useful, please cite:
 
 ```bibtex
-@article{TODO_citekey,
-  title   = {DAW: Dimension-Aware Weighting for Stable Long-Term Forecasting},
-  author  = {TODO: Author One and Author Two and Author Three},
-  journal = {TODO: venue / arXiv preprint},
+@article{fang2026daw,
+  title   = {DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems},
+  author  = {Zhou, Fang and Gianmarco Mengaldo},
+  journal = {arXiv preprint arXiv:2608.22277},
   year    = {2026},
-  note    = {TODO: arXiv ID / DOI}
+  url     = {https://arxiv.org/abs/2608.22277}
 }
 ```
 
@@ -247,4 +248,4 @@ This work was supported in part by \<TODO\>.
 
 ## License
 
-Released under the \<TODO: e.g., MIT\> License. See [`LICENSE`](LICENSE) for details.
+Released under the MIT License. 
