@@ -79,40 +79,25 @@ pip install -r requirements.txt
 
 ```text
 .
-├── ckpts/                       # trained model checkpoints (one dir per weighting scheme)
-│   ├── DAW/
-│   │   └── run_<timestamp>_DAW_alpha<alpha>/          # hparams.json, best_model.pth, last_model.pth, loss_history.json
-│   ├── DenseWeight/
-│   ├── RandomWeight/
-│   └── Standard/
+│
 ├── data/
 │   └── ks/                      # dataset produced by generate_ks.sh / generate_ks_dataset.py
-│       ├── generation/
-│       │   ├── generate_ks_dataset.py   # build the KS forecasting dataset (integrate, split, normalize, downsample)
-│       │   └── KS.py                    # KS equation spectral integrator / solver
-│       ├── mean.npy / std.npy   # train-set normalization stats (applied to val/test)
-│       ├── t.npy / u.npy        # raw integrated trajectory (only with --save_raw)
-│       ├── train/                       # data.npy + precomputed d_sample_pair_*.npy / theta_sample_pair_*.npy
-│       ├── val/                         # data.npy
-│       └── test/                        # data.npy
-├── notebooks/
-│   └── results_visualization.ipynb      # analysis & figure-generation notebook
+│       └── generation/
+│           ├── generate_ks_dataset.py   # build the KS forecasting dataset (integrate, split, normalize, downsample)
+│           └── KS.py                    # KS equation spectral integrator / solver
+│
 ├── pypardi/                     # local/global dynamical-indices library (EVT/GPD estimation of the local dimension d)
-│   ├── local_indices.py         # local_indices.compute(...) -> local dimension d, extremal index theta
-│   ├── global_indices.py
-│   ├── attractors.py
-│   ├── di_evaluate.py / di_evaluate_par.py
-│   └── utils.py
+│
 ├── scripts/
 │   ├── generate_ks.sh            # wrapper around generate_ks_dataset.py ("paper" preset or custom args)
 │   ├── calculate_di.sh           # wrapper around calculate_di_sample_pair.py
 │   ├── experiments_run.sh        # train Standard / DenseWeight / DAW / RandomWeight across seeds
 │   └── experiments_test.sh       # autoregressive rollout evaluation for every trained checkpoint
+│
 ├── calculate_di_sample_pair.py  # compute the local dimension d for each (input, output) sample pair via pypardi
 ├── run_experiments.py           # main training entry point (Standard / DenseWeight / DAW / RandomWeight)
 ├── forecast_test.py             # autoregressive rollout evaluation of a trained checkpoint on the test set
 ├── requirements.txt
-├── LICENSE
 └── README.md
 ```
 
@@ -171,8 +156,6 @@ python calculate_di_sample_pair.py \
 ./scripts/calculate_di.sh
 ```
 
-> **Note on trajectory length:** As shown in Appendix A, the standardized $d$ distribution converges and stabilizes around **850 LT**; this is the configuration used throughout the experiments.
-
 ---
 
 ## Run Experiments
@@ -210,9 +193,9 @@ Each run writes `hparams.json`, `best_model.pth`, `last_model.pth`, and `loss_hi
 | Method | Weighting | Tests |
 |---|---|---|
 | **DAW** (ours) | inverse-density of $P(d)$ × $\tilde{d}$-tilt | — |
-| Standard | $w_i = 1$ | whether uniform training already suffices |
-| DenseWeight | inverse-density of target $L_2$-norm | whether statistical rarity ≈ dynamical complexity |
-| RandomWeight | DAW weights, randomly permuted | whether gains stem from weight–topology alignment vs. gradient variance |
+| Standard | $w_i = 1$ | Standard baseline |
+| DenseWeight | inverse-density of target $L_2$-norm | Statistical rarity vs. dynamical complexity |
+| RandomWeight | DAW weights, randomly permuted | Performance gains from weight–topology alignment vs. gradient variance |
 
 ---
 
