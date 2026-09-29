@@ -27,9 +27,10 @@ PRESET="${1:-paper}"
 case "$PRESET" in
 
   # ---- fixed full paper configuration --------------------------------
+  # Note: L = 2π×3.5 ≈ 22
   paper)
     "$PY" "$SCRIPT" \
-      --L 3.5 --N 64 --dt 0.01 --diffusion 1.0 \
+      --L 3.5 --N 64 --dt 0.01 --diffusion 1.0 \ 
       --length 2500000 --start_from 10000 \
       --train_ratio 0.7 --val_ratio 0.15 \
       --downsample 25 \

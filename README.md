@@ -22,14 +22,13 @@
 ## Abstract
 
 Deep learning surrogates have become powerful tools for simulating and forecasting complex dynamical systems, yet their utility remains limited by catastrophic error accumulation during long-term autoregressive rollouts.
-This behavior is partly tied to the nature of the underlying systems: chaotic spatiotemporal systems, such as the Kuramoto-Sivashinsky (KS) equation, visit phase space unevenly, with dynamics dominated by recurrent, low-dimensional quiescent states (e.g., near-laminar flows) and characterized by rare and dynamically complex topological transitions (e.g., wave-merging events).
+This behavior is partly tied to the nature of the underlying systems: chaotic spatiotemporal systems visit phase space unevenly, with dynamics dominated by recurrent, low-dimensional quiescent states and characterized by rare and dynamically complex regime transitions.
 Trained under a sample-wise uniform objective, standard neural surrogates allocate their finite capacity to the statistically more numerous low-dimensional quiescent states, systematically under-representing the transient regimes that trigger disproportionate, localized errors.
-Existing imbalanced-regression methods attempt to tackle this challenge by reweighting samples according to target-space density. 
-However, statistical target-space rarity need not coincide with the intrinsic dynamical rarity -- the recurrence geometry of the attractor that contributes directly to the source of the imbalance. 
-To address this, we introduce **Dynamics-Aware Weighting (DAW)**, a data-centric objective reweighting framework. 
-Using the **local dimension $d$** from dynamical systems theory as an a priori measure of a state's active degrees of freedom or complexity, DAW reshapes the loss landscape to allocate representational capacity toward the sparse, high-$d$ regimes where forecast errors are systematically large. 
-Evaluated on the chaotic KS equation, DAW consistently outperforms uniform training, purely statistical density weighting, and its randomly permuted ablation.
-In particular, DAW reduces the long-term error in autoregressive forecasting relative to all baselines. 
+Existing imbalanced-regression methods tackle this issue by reweighting samples according to target-space density.
+However, statistical target-space rarity does not coincide with the intrinsic dynamical rarity encoded in the recurrence geometry of the attractor.
+To address this, we introduce Dynamics-Aware Weighting (DAW), a data-centric objective reweighting framework.
+Using the local dimension $d$ from dynamical systems theory as an a priori measure of a state's dynamical complexity, DAW reshapes the loss landscape to allocate representational capacity toward the sparse, high-$d$ regimes where forecast errors are systematically large.
+On the chaotic KS equation, DAW consistently outperforms uniform training as well as weighting based on target-space rarity, and its randomly permuted ablation, reducing long-term autoregressive error relative to all baselines.
 Event-level analysis shows that DAW achieves this by suppressing the localized error amplifications incurred during sharp jumps in the local dimension $d$, which typically accompany complex physical processes such as wave-merging in the KS system.
 
 Key properties:
@@ -37,7 +36,7 @@ Key properties:
 - **Knowledge-informed:** weights are derived from phase-space geometry ($d$), not from target-space statistics.
 - **Plug-and-play:** acts purely on the training objective; architecture-agnostic with **zero inference overhead**.
 
-> 📄 **Paper:** *DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems* — [arXiv:2608.22277](https://arxiv.org/abs/2608.22277)
+> 📄 **Paper:** *Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems* — [arXiv:2608.22277](https://arxiv.org/abs/2608.22277)
 
 ---
 
@@ -48,7 +47,7 @@ DAW computes a per-sample weight in four steps and optimizes a weighted MSE obje
 1. **Local dimension & density estimation.** Estimate $d_i$ for each sample via EVT/GPD ($d = 1/\sigma$), then estimate the empirical density $P(d)$ with Gaussian-kernel KDE (min-max normalized).
 2. **Base density weighting.** Inverse-density weight $w_i^{\text{base}} = \max\!\big(1 - \alpha\, P'(d_i),\, \epsilon\big)$ (DenseWeight-style), which symmetrically elevates *both* tails of $P(d)$.
 3. **Right-tail (high-$d$) reshaping.** Break the symmetry with a linear tilt on the normalized indicator $\tilde{d}_i \in [0,1]$: $w_i^{\text{reshaped}} = w_i^{\text{base}} \cdot \tilde{d}_i$, suppressing the trivial low-$d$ tail and amplifying rare high-$d$ states.
-4. **Normalization.** Rescale so the expected weight over the batch equals 1.0, preserving the global gradient scale.
+4. **Normalization.** Rescale so the expected weight over the dataset equals 1.0, preserving the global gradient scale.
 
 $$\mathcal{L}_{\mathrm{DAW}}(\theta) = \frac{1}{N}\sum_{i=1}^{N} w_i \,\big\lVert f_\theta(x_i) - y_i \big\rVert_2^2$$
 
@@ -61,8 +60,8 @@ $$\mathcal{L}_{\mathrm{DAW}}(\theta) = \frac{1}{N}\sum_{i=1}^{N} w_i \,\big\lVer
 
 ```bash
 # Clone the repository
-git clone https://github.com/ZhousLab/Dimension-Aware-Weighting.git
-cd Dimension-Aware-Weighting
+git clone https://github.com/MathEXLab/DAW.git
+cd DAW
 
 # (Recommended) create an environment
 conda create -n daw python=3.11
@@ -81,10 +80,15 @@ pip install -r requirements.txt
 .
 │
 ├── data/
-│   └── ks/                      # dataset produced by generate_ks.sh / generate_ks_dataset.py
+│   ├── ks/                      # dataset produced by generate_ks.sh / generate_ks_dataset.py
+│   │   └── generation/
+│   │       ├── generate_ks_dataset.py   # build the KS forecasting dataset (integrate, split, normalize, downsample)
+│   │       └── KS.py                    # KS equation spectral integrator / solver
+│   │
+│   └── lorenz/                  # Lorenz-63 dataset generation (supplementary system)
 │       └── generation/
-│           ├── generate_ks_dataset.py   # build the KS forecasting dataset (integrate, split, normalize, downsample)
-│           └── KS.py                    # KS equation spectral integrator / solver
+│           ├── data_generation.py       # integrate the Lorenz-63 system
+│           └── data_process.py          # split/normalize into train/val/test
 │
 ├── pypardi/                     # local/global dynamical-indices library (EVT/GPD estimation of the local dimension d)
 │
@@ -179,7 +183,7 @@ Reproduce the baselines (`--data_dir` must contain `train/`, `val/`, `test/` spl
 python run_experiments.py --method Standard --data_dir data/ks --base_save_dir ./ckpts/Standard
 
 # DenseWeight (target-space density weighting on the output L2-norm)
-python run_experiments.py --method DenseWeight --alpha 0.5 --data_dir data/ks --base_save_dir ./ckpts/DenseWeight
+python run_experiments.py --method DenseWeight --alpha 1.0 --data_dir data/ks --base_save_dir ./ckpts/DenseWeight
 
 # RandomWeight (shuffled DAW weights ablation; also requires --d_path)
 python run_experiments.py --method RandomWeight --alpha 1.0 \
@@ -225,7 +229,7 @@ If you find this work useful, please cite:
 
 ```bibtex
 @article{fang2026daw,
-  title   = {DAW: Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems},
+  title   = {Dynamics-Aware Weighting for Deep Learning Forecasts of Chaotic Systems},
   author  = {Zhou Fang and Gianmarco Mengaldo},
   journal = {arXiv preprint arXiv:2608.22277},
   year    = {2026},

@@ -48,7 +48,7 @@ class DISDataset(torch.utils.data.Dataset):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--data_path', type=str, default='/workspace/git/DGNN/data/ks/train/data.npy') # kolmogorov, shallow_water, weather4degree
+    parser.add_argument('--data_path', type=str, default='.../data/ks/train/data.npy') # kolmogorov, shallow_water, weather4degree
     parser.add_argument('--input_len', type=int, default=3)
     parser.add_argument('--output_len', type=int, default=1)
     parser.add_argument('--n_samples', type=int, default=None)
@@ -65,9 +65,11 @@ if __name__ == '__main__':
     quantile = args.quantile
     n_samples = args.n_samples
     if args.save_name is not None:
-        save_name = f'_sample_pair_in{input_len}_out{output_len}_q{quantile}_{args.save_name}_{n_samples}.npy'
-    else:
+        save_name = f'_sample_pair_in{input_len}_out{output_len}_q{quantile}_{args.save_name}.npy'
+    elif n_samples is not None:
         save_name = f'_sample_pair_in{input_len}_out{output_len}_q{quantile}_{n_samples}.npy'
+    else:
+        save_name = f'_sample_pair_in{input_len}_out{output_len}_q{quantile}.npy'
 
     data = np.load(data_path) # [nt, nvar]
     data = data[:args.n_samples] if args.n_samples is not None else data

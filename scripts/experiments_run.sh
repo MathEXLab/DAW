@@ -40,7 +40,7 @@ for SEED in "${SEEDS[@]}"; do
 
   # DenseWeight
   "$PY" "$SCRIPT" \
-      --method DenseWeight --alpha 0.5 \
+      --method DenseWeight --alpha 1.0 \
       --model_type "$MODEL_TYPE" \
       --input_len "$INPUT_LEN" --output_len "$OUTPUT_LEN" \
       --data_dir "$DATA_DIR" \

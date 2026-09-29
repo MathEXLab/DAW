@@ -2,7 +2,6 @@ folders
 .venv
 self_supervise/logs
 logs
-data
 training_dynamics
 # Byte-compiled / optimized / DLL files
 __pycache__/
